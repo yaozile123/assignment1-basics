@@ -69,8 +69,8 @@ def remove_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
     # Create pattern that captures special tokens
     pattern = "|".join(re.escape(token) for token in special_tokens)
     
-    # Split text while keeping the delimiters (special tokens)
-    parts = re.split(f"({pattern})", text)
+    # Split text and removing the special tokens
+    parts = re.split(pattern, text)
     
     # Filter out empty strings and return non-empty parts
     return [part for part in parts if part]
