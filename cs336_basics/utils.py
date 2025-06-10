@@ -1,19 +1,19 @@
 import os
-import regex as re
 from typing import BinaryIO
 
+import regex as re
+
+
 def find_chunk_boundaries(
-    file: BinaryIO, 
-    desired_num_chunks: int, 
-    split_special_token: bytes
+    file: BinaryIO, desired_num_chunks: int, split_special_token: bytes
 ) -> list[int]:
     """
     Chunk the file into parts that can be counted independently.
     May return fewer chunks if the boundaries end up overlapping.
     """
-    assert isinstance(split_special_token, bytes), (
-        "Must represent special token as a bytestring"
-    )
+    assert isinstance(
+        split_special_token, bytes
+    ), "Must represent special token as a bytestring"
 
     # Get total file size in bytes
     file.seek(0, os.SEEK_END)
@@ -51,26 +51,52 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
+def split_chunks(file: BinaryIO, chunk_boundaries: list[int]) -> list[str]:
+    """
+    Split the file into chunks based on the provided boundaries.
+
+    Args:
+        file: A binary file object to read from.
+        chunk_boundaries: A list of byte offsets where the file should be split.
+
+    Returns:
+        A list of strings, each representing a chunk of the file.
+    """
+    if not chunk_boundaries:
+        raise ValueError("Chunk boundaries list cannot be empty.")
+    if len(chunk_boundaries) == 1:
+        # If there's only one boundary, return the whole file as a single chunk
+        file.seek(0)
+        return [file.read().decode("utf-8", errors="ignore")]
+    chunks = []
+    for i in range(len(chunk_boundaries) - 1):
+        start = chunk_boundaries[i]
+        end = chunk_boundaries[i + 1]
+        file.seek(start)
+        chunks.append(file.read(end - start).decode("utf-8", errors="ignore"))
+    return chunks
+
+
 def remove_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
     """
-    Pre-tokenization step for BPE: split text by special tokens while preserving them.
-    
+    Pre-tokenization step for BPE: split text by special tokens.
+
     Args:
         text: Input text to be pre-tokenized
         special_tokens: List of special tokens that should be preserved as single units
-        
+
     Returns:
         List of text segments, where special tokens are preserved as separate elements
         and non-special text is split from them
     """
     if not special_tokens:
         return [text] if text else []
-    
+
     # Create pattern that captures special tokens
     pattern = "|".join(re.escape(token) for token in special_tokens)
-    
+
     # Split text and removing the special tokens
     parts = re.split(pattern, text)
-    
+
     # Filter out empty strings and return non-empty parts
     return [part for part in parts if part]
