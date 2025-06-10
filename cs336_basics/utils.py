@@ -1,5 +1,5 @@
 import os
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import BinaryIO
 
 import regex as re
@@ -122,3 +122,89 @@ def pretokenize_chunk(chunk: str, special_tokens: list[str]) -> list[str]:
         for matched_word in re.finditer(PAT, chunk):
             counter[matched_word.group()] += 1
     return counter
+
+
+def word_to_bytes(word: str) -> bytes:
+    """
+    Convert a word to its byte representation.
+
+    Args:
+        word: The word to convert.
+
+    Returns:
+        The byte representation of the word.
+    """
+    return word.encode("utf-8", errors="ignore")
+
+
+def get_pair_counts(counter: Counter) -> Counter:
+    """
+    Get the most frequent pair of adjacent tokens in the counter.
+
+    Args:
+        counter: A Counter object containing word frequencies.
+
+    Returns:
+        pair_counts: A Counter object containing counts of adjacent token pairs.
+        word_to_pairs: A defaultdict mapping words to their adjacent token pairs and their counts.
+        pairs_to_word: A defaultdict mapping pairs to the words they appear in.
+    """
+    pair_counts = Counter()
+    word_to_pairs = defaultdict(lambda: defaultdict(int))
+    pairs_to_word = defaultdict(set)
+    for word, count in counter.items():
+        tokens = word_to_bytes(word)
+        for i in range(len(tokens) - 1):
+            pair = (tokens[i : i + 1], tokens[i + 1 : i + 2])
+            pair_counts[pair] += count
+            word_to_pairs[word][pair] += count
+            pairs_to_word[pair].add(word)
+    return pair_counts, word_to_pairs, pairs_to_word
+
+
+def word_bytes_to_tokens(word_bytes: bytes, token_set: set[bytes]) -> list[bytes]:
+    """
+    Convert a byte string to a list of tokens (single bytes).
+
+    Args:
+        word_bytes: The byte string to convert.
+
+    Returns:
+        A list of single-byte tokens.
+    """
+    result = []
+    i = 0
+    while i < len(word_bytes):
+        longest = []
+        for j in range(i, len(word_bytes)):
+            candidate = word_bytes[i : j + 1]
+            if candidate not in token_set:
+                break
+            longest = candidate
+        result.append(longest)
+        i += len(longest)
+    return result
+
+
+def get_most_frequent_pair(pair_counts: Counter) -> tuple[bytes, bytes]:
+    """
+    Get the most frequent pair of adjacent tokens from the pair counts.
+    If ties, return the largest pair lexicographically.
+
+    Args:
+        pair_counts: A Counter object containing token frequencies.
+
+    Returns:
+        The most frequent pair of adjacent tokens.
+    """
+    if not pair_counts:
+        return None, None
+    most_frequent = max(pair_counts.values())
+    most_frequent_pair = None
+    # Check for ties and return the largest pair lexicographically
+    for pair in pair_counts:
+        if pair_counts[pair] == most_frequent:
+            most_frequent_pair = (
+                max(most_frequent_pair, pair) if most_frequent_pair else pair
+            )
+    return most_frequent_pair
