@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 from typing import BinaryIO
 
 import regex as re
@@ -100,3 +101,24 @@ def remove_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
 
     # Filter out empty strings and return non-empty parts
     return [part for part in parts if part]
+
+
+def pretokenize_chunk(chunk: str, special_tokens: list[str]) -> list[str]:
+    """
+    Pre-tokenization step for a single chunk: split text by special tokens.
+
+    Args:
+        chunk: Input text chunk to be pre-tokenized
+        special_tokens: List of special tokens that should be preserved as single units
+
+    Returns:
+        List of text segments, where special tokens are preserved as separate elements
+        and non-special text is split from them
+    """
+    cleaned_chunks = remove_special_tokens(chunk, special_tokens)
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    counter = Counter()
+    for chunk in cleaned_chunks:
+        for matched_word in re.finditer(PAT, chunk):
+            counter[matched_word.group()] += 1
+    return counter

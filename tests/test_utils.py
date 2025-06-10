@@ -1,6 +1,6 @@
 import io
 
-from cs336_basics.utils import remove_special_tokens, split_chunks
+from cs336_basics.utils import pretokenize_chunk, remove_special_tokens, split_chunks
 
 
 def test_remove_special_tokens_basic():
@@ -70,3 +70,53 @@ def test_split_chunks_single_boundary():
 
     assert len(chunks) == 1
     assert chunks[0] == "HelloWorld"
+
+
+def test_pretokenize_chunk_basic():
+    """Test basic tokenization with simple text."""
+    chunk = "hello world"
+    special_tokens = []
+    result = pretokenize_chunk(chunk, special_tokens)
+    assert result["hello"] == 1
+    assert result[" world"] == 1
+
+
+def test_pretokenize_chunk_with_special_tokens():
+    """Test tokenization with special tokens present."""
+    chunk = "hello<|endoftext|>world"
+    special_tokens = ["<|endoftext|>"]
+    result = pretokenize_chunk(chunk, special_tokens)
+    assert result["hello"] == 1
+    assert result["world"] == 1
+
+
+def test_pretokenize_chunk_with_multiple_special_tokens():
+    """Test tokenization with multiple special tokens present."""
+    chunk = "hello<|endoftext|>world<|PAD|>!"
+    special_tokens = ["<|endoftext|>", "<|PAD|>"]
+    result = pretokenize_chunk(chunk, special_tokens)
+    assert result["hello"] == 1
+    assert result["world"] == 1
+    assert result["!"] == 1
+
+
+def test_pretokenize_chunk_empty():
+    """Test tokenization with empty inputs."""
+    result1 = pretokenize_chunk("", [])
+    assert len(result1) == 0
+
+    result2 = pretokenize_chunk("", ["<|endoftext|>"])
+    assert len(result2) == 0
+
+
+def test_pretokenize_chunk_mixed_content():
+    """Test tokenization with numbers and special characters."""
+    chunk = "123 hello !@# 456 world"
+    special_tokens = ["!", "@", "#"]
+    result = pretokenize_chunk(chunk, special_tokens)
+    assert result["123"] == 1
+    assert result[" 456"] == 1
+    assert result[" hello"] == 1
+    assert result[" world"] == 1
+    assert result[" "] == 1
+    assert len(result) == 5
