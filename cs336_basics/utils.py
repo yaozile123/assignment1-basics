@@ -137,7 +137,7 @@ def word_to_bytes(word: str) -> bytes:
     return word.encode("utf-8", errors="ignore")
 
 
-def get_pair_counts(counter: Counter) -> Counter:
+def get_pair_counts(counter: Counter) -> tuple[Counter, dict, dict]:
     """
     Get the most frequent pair of adjacent tokens in the counter.
 
