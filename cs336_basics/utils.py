@@ -133,7 +133,7 @@ def get_pair_counts(counter: Counter) -> tuple[Counter, dict, dict]:
 
     Returns:
         pair_counts: A Counter object containing counts of adjacent token pairs.
-        word_to_pairs: A defaultdict mapping words to their adjacent token pairs and their counts.
+        word_splits: A defaultdict mapping words to their token splits.
         pairs_to_word: A defaultdict mapping pairs to the words they appear in.
     """
     pair_counts = Counter()
