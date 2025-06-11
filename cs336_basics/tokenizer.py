@@ -9,10 +9,12 @@ class Tokenizer:
         self.id_to_token = vocab
         self.token_to_id = {token: index for index, token in vocab.items()}
         self.merges = {x: i for i, x in enumerate(merges)}
-        self.special_tokens = set(special_tokens) if special_tokens else set()
+        self.special_tokens = set([token for token in special_tokens]) if special_tokens else set()
         for token in self.special_tokens:
-            if token not in self.token_to_id:
-                self.token_to_id[token] = len(self.token_to_id)
+            encoded_token = token.encode('utf-8')
+            if encoded_token not in self.token_to_id:
+                self.id_to_token[len(self.token_to_id)] = encoded_token
+                self.token_to_id[encoded_token] = len(self.token_to_id)
 
     
     @classmethod
@@ -26,11 +28,16 @@ class Tokenizer:
 
     def encode(self, text: str) -> list[int]:
         ids = []
-        pattern = "|".join(f"({re.escape(token)})" for token in self.special_tokens)
+        if not self.special_tokens:
+            return self.encode_part(text)
+        special_pattern = "|".join(
+            re.escape(token) for token in sorted(self.special_tokens, key=len, reverse=True)
+        )
+        pattern = f"({special_pattern})"
         parts = re.split(pattern, text)
         for part in parts:
             if part in self.special_tokens:
-                ids.append(self.token_to_id[part])
+                ids.append(self.token_to_id[part.encode('utf-8')])
             else:
                 ids.extend(self.encode_part(part))
         return ids
