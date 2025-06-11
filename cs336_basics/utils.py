@@ -119,8 +119,9 @@ def pretokenize_chunk(chunk: str, special_tokens: list[str]) -> list[str]:
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     counter = Counter()
     for chunk in cleaned_chunks:
-        for matched_word in re.finditer(PAT, chunk):
-            counter[matched_word.group()] += 1
+        matches_generator = (match.group() for match in re.finditer(PAT, chunk))
+        counter.update(matches_generator)
+
     return counter
 
 
@@ -161,6 +162,12 @@ def get_most_frequent_pair(pair_counts: Counter) -> tuple[bytes, bytes]:
     """
     if not pair_counts:
         return None, None
-    most_frequent = max(pair_counts.values())
-    most_frequent_pairs = [pair for pair in pair_counts if pair_counts[pair] == most_frequent]
-    return max(most_frequent_pairs)
+    max_count = 0
+    best_pair = None
+    
+    for pair, count in pair_counts.items():
+        if count > max_count or (count == max_count and (best_pair is None or pair > best_pair)):
+            max_count = count
+            best_pair = pair
+    
+    return best_pair
