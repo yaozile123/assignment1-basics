@@ -124,19 +124,6 @@ def pretokenize_chunk(chunk: str, special_tokens: list[str]) -> list[str]:
     return counter
 
 
-def word_to_bytes(word: str) -> bytes:
-    """
-    Convert a word to its byte representation.
-
-    Args:
-        word: The word to convert.
-
-    Returns:
-        The byte representation of the word.
-    """
-    return word.encode("utf-8", errors="ignore")
-
-
 def get_pair_counts(counter: Counter) -> tuple[Counter, dict, dict]:
     """
     Get the most frequent pair of adjacent tokens in the counter.
@@ -150,40 +137,15 @@ def get_pair_counts(counter: Counter) -> tuple[Counter, dict, dict]:
         pairs_to_word: A defaultdict mapping pairs to the words they appear in.
     """
     pair_counts = Counter()
-    word_to_pairs = defaultdict(lambda: defaultdict(int))
+    word_splits = {word: [bytes([b]) for b in word.encode('utf-8')] for word in counter}
     pairs_to_word = defaultdict(set)
     for word, count in counter.items():
-        tokens = word_to_bytes(word)
+        tokens = word_splits[word]
         for i in range(len(tokens) - 1):
-            pair = (tokens[i : i + 1], tokens[i + 1 : i + 2])
+            pair = (tokens[i], tokens[i + 1])
             pair_counts[pair] += count
-            word_to_pairs[word][pair] += count
             pairs_to_word[pair].add(word)
-    return pair_counts, word_to_pairs, pairs_to_word
-
-
-def word_bytes_to_tokens(word_bytes: bytes, token_set: set[bytes]) -> list[bytes]:
-    """
-    Convert a byte string to a list of tokens (single bytes).
-
-    Args:
-        word_bytes: The byte string to convert.
-
-    Returns:
-        A list of single-byte tokens.
-    """
-    result = []
-    i = 0
-    while i < len(word_bytes):
-        longest = []
-        for j in range(i, len(word_bytes)):
-            candidate = word_bytes[i : j + 1]
-            if candidate not in token_set:
-                break
-            longest = candidate
-        result.append(longest)
-        i += len(longest)
-    return result
+    return pair_counts, word_splits, pairs_to_word
 
 
 def get_most_frequent_pair(pair_counts: Counter) -> tuple[bytes, bytes]:
@@ -200,11 +162,5 @@ def get_most_frequent_pair(pair_counts: Counter) -> tuple[bytes, bytes]:
     if not pair_counts:
         return None, None
     most_frequent = max(pair_counts.values())
-    most_frequent_pair = None
-    # Check for ties and return the largest pair lexicographically
-    for pair in pair_counts:
-        if pair_counts[pair] == most_frequent:
-            most_frequent_pair = (
-                max(most_frequent_pair, pair) if most_frequent_pair else pair
-            )
-    return most_frequent_pair
+    most_frequent_pairs = [pair for pair in pair_counts if pair_counts[pair] == most_frequent]
+    return max(most_frequent_pairs)

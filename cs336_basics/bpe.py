@@ -7,8 +7,6 @@ from cs336_basics.utils import (
     get_pair_counts,
     pretokenize_chunk,
     split_chunks,
-    word_bytes_to_tokens,
-    word_to_bytes,
 )
 
 num_of_processes: int = 100
@@ -23,7 +21,7 @@ def initialize_vocab(special_tokens: list[str]) -> dict[int, bytes]:
     Returns:
         dict[int, bytes]: A dictionary mapping token IDs to their byte representations.
     """
-    vocab = {i: bytes(i) for i in range(256)}  # Initialize with single-byte tokens
+    vocab = {i: bytes([i]) for i in range(256)}  # Initialize with single-byte tokens
     for special_token in special_tokens:  # Add special tokens to the vocabulary
         vocab[len(vocab)] = special_token.encode("utf-8")
     return vocab
@@ -43,9 +41,6 @@ def paralleize_pretokenization(
         Counter: A Counter object containing all pretokenized tokens.
     """
     with ProcessPoolExecutor(max_workers=num_of_processes) as executor:
-        # chunk_counters = list(
-        #     executor.map(lambda chunk: pretokenize_chunk(chunk, special_tokens), chunks)
-        # )
         chunk_counters = list(
             executor.map(pretokenize_chunk, chunks, [special_tokens] * len(chunks))
         )
@@ -75,37 +70,57 @@ def bpe_merge(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    pair_counts, word_to_pairs, pairs_to_word = get_pair_counts(counter)
-    token_set = set(vocab.values())
+    pair_counts, word_splits, pairs_to_word = get_pair_counts(counter)
     merges = []
 
     for _ in range(merge_times):
-        # Find the most frequent pair
         if not pair_counts:
             break
-        most_frequent_pair = get_most_frequent_pair(pair_counts)
-        new_token = b"".join(most_frequent_pair)
-        merges.append(most_frequent_pair)
-        # Update vocabulary
-        vocab[len(vocab)] = new_token
-        token_set.add(new_token)
 
-        # Update pair counts
-        for affected_word in pairs_to_word[most_frequent_pair]:
-            # Remove the old pairs
-            for pair in word_to_pairs[affected_word]:
+        most_frequent_pair = get_most_frequent_pair(pair_counts)
+        if not most_frequent_pair or most_frequent_pair[0] is None:
+            break
+
+        token_A, token_B = most_frequent_pair
+        new_token = token_A + token_B
+        merges.append(most_frequent_pair)
+        vocab[len(vocab)] = new_token
+
+        words_to_update = list(pairs_to_word[most_frequent_pair])
+
+        for word in words_to_update:
+            tokens = word_splits[word]
+            word_count = counter[word]
+
+            # Decrement counts for all old pairs in this word
+            for i in range(len(tokens) - 1):
+                pair = (tokens[i], tokens[i + 1])
                 if pair in pair_counts:
-                    pair_counts[pair] -= word_to_pairs[affected_word][pair]
-                    if pair_counts[pair] == 0:
+                    pair_counts[pair] -= word_count
+                    if pair_counts[pair] <= 0:
                         del pair_counts[pair]
-            # Add the new pair
-            new_tokens = word_bytes_to_tokens(word_to_bytes(affected_word), token_set)
+                        if pair in pairs_to_word:
+                            pairs_to_word[pair].discard(word)
+                            if not pairs_to_word[pair]:
+                                del pairs_to_word[pair]
+
+            # Create new token list for the word
+            new_tokens = []
+            j = 0
+            while j < len(tokens):
+                if j < len(tokens) - 1 and (tokens[j], tokens[j + 1]) == most_frequent_pair:
+                    new_tokens.append(new_token)
+                    j += 2
+                else:
+                    new_tokens.append(tokens[j])
+                    j += 1
+            word_splits[word] = new_tokens
+
+            # Increment counts for all new pairs in this word
             for i in range(len(new_tokens) - 1):
                 pair = (new_tokens[i], new_tokens[i + 1])
-                pair_counts[pair] += counter[affected_word]
-                word_to_pairs[affected_word][pair] += counter[affected_word]
-                pairs_to_word[pair].add(affected_word)
-        del pairs_to_word[most_frequent_pair]
+                pair_counts[pair] += word_count
+                pairs_to_word[pair].add(word)
 
     return vocab, merges
 
@@ -138,13 +153,11 @@ def train_bpe(
 
     # read input file
     with open(input_path, "rb") as f:
-        text = f.read()
-
-    # Split text into chunks for parallel processing of pretokenization
-    chunk_boundaries = find_chunk_boundaries(
-        text, num_of_processes, split_special_token=b"<|endoftext|>"
-    )
-    chunks = split_chunks(text, chunk_boundaries)
+        # Split text into chunks for parallel processing of pretokenization
+        chunk_boundaries = find_chunk_boundaries(
+            f, num_of_processes, split_special_token=b"<|endoftext|>"
+        )
+        chunks = split_chunks(f, chunk_boundaries)
     pretokenize_counter = paralleize_pretokenization(
         chunks, num_of_processes, special_tokens
     )

@@ -14,6 +14,8 @@ def test_initialize_vocab():
     assert len(vocab) == 258  # 256 byte tokens + 2 special tokens
     assert vocab[256] == b"<pad>"
     assert vocab[257] == b"<unk>"
+    for i in range(256):
+        assert vocab[i] == bytes([i])
 
 
 def test_paralleize_pretokenization_basic():
@@ -117,3 +119,18 @@ def test_bpe_merge_complex_patterns():
     # Verify vocab growth
     assert len(new_vocab) == 259, f"Expected vocab size 259, got {len(new_vocab)}"
     assert b"ab" in new_vocab.values(), "Merged token 'ab' should be in vocab"
+
+
+def test_bpe_complex_patterns2():
+    counter = Counter({"low": 5, "lower": 2, "widest": 3, "newest": 6})
+    vocab = {i: bytes([i]) for i in range(256)}
+
+    new_vocab, merges = bpe_merge(counter, vocab, 6)
+    assert len(merges) == 6, f"Expected 6 merges, got {len(merges)}"
+    # ['s t', 'e st', 'o w', 'l ow', 'w est', 'n e']
+    assert merges[0] == (b"s", b"t"), f"First merge should be (b's', b't'), got {merges[0]}"
+    assert merges[1] == (b"e", b"st"), f"Second merge should be (b'e', b'st'), got {merges[1]}"
+    assert merges[2] == (b"o", b"w"), f"Third merge should be (b'o', b'w'), got {merges[2]}"
+    assert merges[3] == (b"l", b"ow"), f"Fourth merge should be (b'l', b'ow'), got {merges[3]}"
+    assert merges[4] == (b"w", b"est"), f"Fifth merge should be (b'w', b'est'), got {merges[4]}"
+    assert merges[5] == (b"n", b"e"), f"Sixth merge should be (b'n', b'e'), got {merges[5]}"

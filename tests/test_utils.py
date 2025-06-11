@@ -7,7 +7,6 @@ from cs336_basics.utils import (
     pretokenize_chunk,
     remove_special_tokens,
     split_chunks,
-    word_bytes_to_tokens,
 )
 
 
@@ -130,27 +129,6 @@ def test_pretokenize_chunk_mixed_content():
     assert len(result) == 5
 
 
-def test_word_bytes_to_tokens_basic():
-    token_set = {b"a", b"b", b"c", b"ab", b"abc"}
-    word = b"abc"
-    tokens = word_bytes_to_tokens(word, token_set)
-    assert tokens == [b"abc"]  # prefers longest match
-
-
-def test_word_bytes_to_tokens_partial_matches():
-    token_set = {b"a", b"b", b"c", b"ab"}
-    word = b"abc"
-    tokens = word_bytes_to_tokens(word, token_set)
-    assert tokens == [b"ab", b"c"]
-
-
-def test_word_bytes_to_tokens_single_bytes():
-    token_set = {bytes([i]) for i in range(256)}  # all possible single-byte tokens
-    word = b"abc"
-    tokens = word_bytes_to_tokens(word, token_set)
-    assert tokens == [b"a", b"b", b"c"]
-
-
 def test_get_most_frequent_pair_normal():
     counter = Counter({(b"a", b"b"): 3, (b"b", b"c"): 2})
     assert get_most_frequent_pair(counter) == (b"a", b"b")
@@ -166,12 +144,12 @@ def test_get_pair_counts_with_bytes_pairs():
     # Input word frequencies
     word_counter = Counter({"ab": 2, "bc": 3})
 
-    pair_counts, word_to_pairs, pairs_to_word = get_pair_counts(word_counter)
+    pair_counts, word_splits, pairs_to_word = get_pair_counts(word_counter)
 
     assert pair_counts == Counter({(b"a", b"b"): 2, (b"b", b"c"): 3})
 
-    assert word_to_pairs["ab"] == {(b"a", b"b"): 2}
-    assert word_to_pairs["bc"] == {(b"b", b"c"): 3}
+    assert word_splits["ab"] == [b"a", b"b"]
+    assert word_splits["bc"] == [b"b", b"c"]
 
     assert pairs_to_word[(b"a", b"b")] == {"ab"}
     assert pairs_to_word[(b"b", b"c")] == {"bc"}
