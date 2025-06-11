@@ -2,6 +2,7 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 
 from cs336_basics.utils import (
+    create_new_tokens,
     find_chunk_boundaries,
     get_most_frequent_pair,
     get_pair_counts,
@@ -106,15 +107,19 @@ def bpe_merge(
                                 del pairs_to_word[pair]
 
             # Create new token list for the word
-            new_tokens = []
-            j = 0
-            while j < len(tokens):
-                if j < len(tokens) - 1 and (tokens[j], tokens[j + 1]) == most_frequent_pair:
-                    new_tokens.append(new_token)
-                    j += 2
-                else:
-                    new_tokens.append(tokens[j])
-                    j += 1
+            # new_tokens = []
+            # j = 0
+            # while j < len(tokens):
+            #     if (
+            #         j < len(tokens) - 1
+            #         and (tokens[j], tokens[j + 1]) == most_frequent_pair
+            #     ):
+            #         new_tokens.append(new_token)
+            #         j += 2
+            #     else:
+            #         new_tokens.append(tokens[j])
+            #         j += 1
+            new_tokens = create_new_tokens(tokens, most_frequent_pair)
             word_splits[word] = new_tokens
 
             # Increment counts for all new pairs in this word
@@ -169,6 +174,7 @@ def train_bpe(
 
 if __name__ == "__main__":
     import time
+
     file_path = "data/TinyStoriesV2-GPT4-train.txt"
     vocab_size = 10000
     start_time = time.time()
@@ -178,4 +184,6 @@ if __name__ == "__main__":
     print(f"Vocab size: {len(vocab)}")
     print(f"Merges: {len(merges)}")
     longest_vocab = sorted(vocab.values(), key=len, reverse=True)[0]
-    print(f"Longest Vocab has {len(longest_vocab)} bytes, which is {longest_vocab.decode('utf-8')}")
+    print(
+        f"Longest Vocab has {len(longest_vocab)} bytes, which is {longest_vocab.decode('utf-8')}"
+    )

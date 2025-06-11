@@ -138,7 +138,7 @@ def get_pair_counts(counter: Counter) -> tuple[Counter, dict, dict]:
         pairs_to_word: A defaultdict mapping pairs to the words they appear in.
     """
     pair_counts = Counter()
-    word_splits = {word: [bytes([b]) for b in word.encode('utf-8')] for word in counter}
+    word_splits = {word: [bytes([b]) for b in word.encode("utf-8")] for word in counter}
     pairs_to_word = defaultdict(set)
     for word, count in counter.items():
         tokens = word_splits[word]
@@ -164,10 +164,38 @@ def get_most_frequent_pair(pair_counts: Counter) -> tuple[bytes, bytes]:
         return None, None
     max_count = 0
     best_pair = None
-    
+
     for pair, count in pair_counts.items():
-        if count > max_count or (count == max_count and (best_pair is None or pair > best_pair)):
+        if count > max_count or (
+            count == max_count and (best_pair is None or pair > best_pair)
+        ):
             max_count = count
             best_pair = pair
-    
+
     return best_pair
+
+
+def create_new_tokens(
+    tokens: list[bytes], most_frequent_pair: tuple[bytes, bytes]
+) -> list[bytes]:
+    """
+    Create a new token by merging the most frequent pair of tokens.
+
+    Args:
+        tokens: List of current tokens.
+        most_frequent_pair: The pair of tokens to merge.
+
+    Returns:
+        A new list of tokens with the merged token included.
+    """
+    new_tokens = []
+    new_token = most_frequent_pair[0] + most_frequent_pair[1]
+    j = 0
+    while j < len(tokens):
+        if j < len(tokens) - 1 and (tokens[j], tokens[j + 1]) == most_frequent_pair:
+            new_tokens.append(new_token)
+            j += 2
+        else:
+            new_tokens.append(tokens[j])
+            j += 1
+    return new_tokens
