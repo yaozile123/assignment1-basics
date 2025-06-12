@@ -27,3 +27,47 @@ class Embedding(nn.Module):
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         return self.weight[token_ids]
+    
+
+class RMSNorm(nn.Module):
+    """
+    RMS = sqrt(1/n * Σ(x_i²) + eps)
+    y_i = (x_i / RMS) * γ_i
+    where γ_i is a learnable parameter.
+    """
+    def __init__(self, dim: int, eps: float = 1e-5, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim, device=device, dtype=dtype))
+    
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        in_dtype = x.dtype
+        x = x.to(torch.float32)
+        rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+        x = x / rms * self.weight
+        return x.to(in_dtype)
+
+
+class SiLU(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.sigmoid(x)
+
+
+class SwiGLU(nn.Module):
+    def __init__(self, d_model: int, d_ff: int | None, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super().__init__()
+        assert d_model % 64 == 0, "d_model must be divisible by 64"
+        if d_ff is None:
+            d_ff = d_model * 8 // 3
+        self.d_model = d_model
+        self.silu = SiLU()
+        self.W1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.W2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.W3 = Linear(d_model, d_ff, device=device, dtype=dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.W2(self.silu(self.W1(x)) * self.W3(x))
