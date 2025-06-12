@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from einops import einsum
+from einops import einsum, rearrange
 
 
 class Linear(nn.Module):
@@ -137,3 +137,50 @@ class RotaryPositionalEmbedding(nn.Module):
         out = torch.stack((out_even, out_odd), dim=-1).flatten(-2)
         
         return out
+
+
+def softmax(x: torch.Tensor, dim: int):
+    x_max = x.max(dim=dim, keepdim=True).values
+    x_exp = torch.exp(x - x_max)
+    x_sum = x_exp.sum(dim=dim, keepdim=True)
+    return x_exp / x_sum     
+
+
+def scaled_dot_product_attention(query: torch.Tensor, key: torch.Tensor, value :torch.Tensor, mask: torch.Tensor):
+    d = query.size()[-1]
+    dot_product = einsum(query, key, "b ... q d, b ... k d -> b ... q k") # b, s, s
+    wei = dot_product.masked_fill(mask == 0, -float('inf'))
+    scaled_dot_product = wei / d ** 0.5
+    out = softmax(scaled_dot_product, dim=-1)
+    out = einsum(out, value, "b ... q k, b ... k d -> b ... q d") # b, s, d
+    return out
+
+
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int = 8192, theta: int = 10000):
+        super().__init__()
+        assert d_model % num_heads == 0
+        self.q_proj = Linear(d_model, d_model)
+        self.k_proj = Linear(d_model, d_model)
+        self.v_proj = Linear(d_model, d_model)
+        self.o_proj = Linear(d_model, d_model)
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_head = d_model // num_heads
+        self.rope = RotaryPositionalEmbedding(theta, self.d_head, max_seq_len)
+    
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
+        seq_len = x.size(-2)
+        Q = self.q_proj(x)
+        K = self.k_proj(x)
+        V = self.v_proj(x)
+        Q = rearrange(Q, "batch seq (num_heads head_dim) -> batch num_heads seq head_dim", num_heads = self.num_heads)
+        K = rearrange(K, "batch seq (num_heads head_dim) -> batch num_heads seq head_dim", num_heads = self.num_heads)
+        V = rearrange(V, "batch seq (num_heads head_dim) -> batch num_heads seq head_dim", num_heads = self.num_heads)
+        if token_positions is not None:
+            Q = self.rope(Q, token_positions)
+            K = self.rope(K, token_positions)
+        mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device)).view(1, 1, seq_len, seq_len)
+        out = scaled_dot_product_attention(Q, K, V, mask)
+        out = rearrange(out, "batch num_heads seq head_dim -> batch seq (num_heads head_dim)")
+        return self.o_proj(out)
