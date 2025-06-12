@@ -174,9 +174,9 @@ def train_bpe(
 
 if __name__ == "__main__":
     import time
-
-    file_path = "data/TinyStoriesV2-GPT4-train.txt"
-    vocab_size = 10000
+    import pickle
+    file_path = "data/owt_train.txt"
+    vocab_size = 32000
     start_time = time.time()
     vocab, merges = train_bpe(file_path, vocab_size, ["<|endoftext|>"])
     end_time = time.time()
@@ -184,6 +184,8 @@ if __name__ == "__main__":
     print(f"Vocab size: {len(vocab)}")
     print(f"Merges: {len(merges)}")
     longest_vocab = sorted(vocab.values(), key=len, reverse=True)[0]
-    print(
-        f"Longest Vocab has {len(longest_vocab)} bytes, which is {longest_vocab.decode('utf-8')}"
-    )
+    print(f"Longest Vocab has {len(longest_vocab)} bytes, which is {longest_vocab.decode('utf-8')}")
+    with open("bpe/owt_train_vocab.pkl", "wb") as f:
+        pickle.dump(vocab, f)
+    with open("bpe/owt_train_merges.pkl", "wb") as f:
+        pickle.dump(merges, f)
