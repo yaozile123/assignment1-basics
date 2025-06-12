@@ -2,32 +2,47 @@ import torch
 import torch.nn as nn
 from einops import einsum
 
+
 class Linear(nn.Module):
-    def __init__(self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         std = (2 / (in_features + out_features)) ** 0.5
-        self.weight = nn.Parameter(torch.empty(out_features, in_features, device=device, dtype=dtype))
+        self.weight = nn.Parameter(
+            torch.empty(out_features, in_features, device=device, dtype=dtype)
+        )
         nn.init.trunc_normal_(self.weight, mean=0, std=std, a=-3 * std, b=3 * std)
-    
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return einsum(x, self.weight, "... d_in, d_out d_in -> ... d_out")
 
 
 class Embedding(nn.Module):
-    def __init__(self, num_embeddings: int, embedding_dim: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
-        self.weight = nn.Parameter(torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype))
+        self.weight = nn.Parameter(
+            torch.empty(num_embeddings, embedding_dim, device=device, dtype=dtype)
+        )
         nn.init.trunc_normal_(self.weight, mean=0, std=1, a=-3, b=3)
-    
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         return self.weight[token_ids]
-    
+
 
 class RMSNorm(nn.Module):
     """
@@ -35,16 +50,22 @@ class RMSNorm(nn.Module):
     y_i = (x_i / RMS) * γ_i
     where γ_i is a learnable parameter.
     """
-    def __init__(self, dim: int, eps: float = 1e-5, device: torch.device | None = None, dtype: torch.dtype | None = None):
+
+    def __init__(
+        self,
+        dim: int,
+        eps: float = 1e-5,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim, device=device, dtype=dtype))
-    
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         in_dtype = x.dtype
         x = x.to(torch.float32)
-        rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+        rms = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + self.eps)
         x = x / rms * self.weight
         return x.to(in_dtype)
 
@@ -58,7 +79,13 @@ class SiLU(nn.Module):
 
 
 class SwiGLU(nn.Module):
-    def __init__(self, d_model: int, d_ff: int | None, device: torch.device | None = None, dtype: torch.dtype | None = None):
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int | None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
         super().__init__()
         assert d_model % 64 == 0, "d_model must be divisible by 64"
         if d_ff is None:
@@ -71,3 +98,44 @@ class SwiGLU(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.W2(self.silu(self.W1(x)) * self.W3(x))
+
+
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+        """
+        theta: float Θ value for the RoPE
+        d_k: int dimension of query and key vectors
+        max_seq_len: int Maximum sequence length that will be inputted
+        device: torch.device | None = None Device to store the buffer on
+        """
+        super().__init__()
+        self.theta = theta
+        self.dim = d_k
+        # θ = base^(–2i / d)
+        inv_freq = 1.0 / (
+            self.theta
+            ** (torch.arange(0, self.dim, 2, device=device).float() / self.dim)
+        )  # (dim / 2, )
+        pos = torch.arange(
+            max_seq_len, dtype=torch.float32, device=device
+        )  # (max_seq_len, )
+        freqs = einsum(
+            pos, inv_freq, "max_seq, dim/2 -> (max_seq dim/2)"
+        )  # mθ (max_seq dim/2)
+        freqs = torch.cat((freqs, freqs), dim=-1)
+        sin = freqs.sin()
+        cos = freqs.cos()
+        self.register_buffer("sin", sin, persistent=False)  # (max_seq, head_dim)
+        self.register_buffer("cos", cos, persistent=False)  # (max_seq, head_dim)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor):
+        # x (..., seq_len, d_k)
+        # token_position (batch_size, seq_len)
+        x1 = x[..., : self.dim // 2]
+        x2 = x[..., self.dim // 2 :]
+        x_rotated = torch.cat((-x2, x1), dim=-1)
+        seq_len = x.shape[-2]
+        cos = self.cos[token_positions]  # (batch_size, seq_len, dim)
+        sin = self.sin[token_positions]  # (batch_size, seq_len, dim)
+        out = (x * cos) + (x_rotated * sin)
+        return out
