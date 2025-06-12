@@ -117,12 +117,11 @@ class RotaryPositionalEmbedding(nn.Module):
             ** (torch.arange(0, self.dim, 2, device=device).float() / self.dim)
         )  # (dim / 2, )
         pos = torch.arange(
-            max_seq_len, dtype=torch.float32, device=device
+            max_seq_len, device=device
         )  # (max_seq_len, )
         freqs = einsum(
-            pos, inv_freq, "max_seq, dim/2 -> (max_seq dim/2)"
+            pos, inv_freq, "max_seq, dim -> max_seq dim"
         )  # mθ (max_seq dim/2)
-        freqs = torch.cat((freqs, freqs), dim=-1)
         sin = freqs.sin()
         cos = freqs.cos()
         self.register_buffer("sin", sin, persistent=False)  # (max_seq, head_dim)
@@ -131,11 +130,10 @@ class RotaryPositionalEmbedding(nn.Module):
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor):
         # x (..., seq_len, d_k)
         # token_position (batch_size, seq_len)
-        x1 = x[..., : self.dim // 2]
-        x2 = x[..., self.dim // 2 :]
-        x_rotated = torch.cat((-x2, x1), dim=-1)
-        seq_len = x.shape[-2]
-        cos = self.cos[token_positions]  # (batch_size, seq_len, dim)
-        sin = self.sin[token_positions]  # (batch_size, seq_len, dim)
-        out = (x * cos) + (x_rotated * sin)
+        sin, cos = self.sin[token_positions], self.cos[token_positions]
+        x_even, x_odd = x[..., 0::2], x[..., 1::2]
+        out_even = x_even * cos - x_odd * sin
+        out_odd  = x_even * sin + x_odd * cos
+        out = torch.stack((out_even, out_odd), dim=-1).flatten(-2)
+        
         return out
