@@ -1,5 +1,6 @@
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from tqdm import tqdm
 
 from cs336_basics.utils import (
     create_new_tokens,
@@ -75,7 +76,7 @@ def bpe_merge(
     pair_counts, word_splits, pairs_to_word = get_pair_counts(counter)
     merges = []
 
-    for _ in range(merge_times):
+    for _ in tqdm(range(merge_times), desc="BPE Merges", total=merge_times):
         if not pair_counts:
             break
 
@@ -106,19 +107,6 @@ def bpe_merge(
                             if not pairs_to_word[pair]:
                                 del pairs_to_word[pair]
 
-            # Create new token list for the word
-            # new_tokens = []
-            # j = 0
-            # while j < len(tokens):
-            #     if (
-            #         j < len(tokens) - 1
-            #         and (tokens[j], tokens[j + 1]) == most_frequent_pair
-            #     ):
-            #         new_tokens.append(new_token)
-            #         j += 2
-            #     else:
-            #         new_tokens.append(tokens[j])
-            #         j += 1
             new_tokens = create_new_tokens(tokens, most_frequent_pair)
             word_splits[word] = new_tokens
 
@@ -156,7 +144,7 @@ def train_bpe(
                 Merges are ordered by order of creation.
     """
     vocab = initialize_vocab(special_tokens)
-
+    print(f"Initialized vocab with {len(vocab)} tokens")
     # read input file
     with open(input_path, "rb") as f:
         # Split text into chunks for parallel processing of pretokenization
@@ -164,9 +152,11 @@ def train_bpe(
             f, num_of_processes, split_special_token=b"<|endoftext|>"
         )
         chunks = split_chunks(f, chunk_boundaries)
+    print("Starting pretokenization")
     pretokenize_counter = paralleize_pretokenization(
         chunks, num_of_processes, special_tokens
     )
+    print("Finished pretokenization")
     merge_times = vocab_size - len(vocab)  # Number of merges to perform
     vocab, merges = bpe_merge(pretokenize_counter, vocab, merge_times)
     return vocab, merges
@@ -175,8 +165,8 @@ def train_bpe(
 if __name__ == "__main__":
     import time
     import pickle
-    file_path = "data/owt_train.txt"
-    vocab_size = 32000
+    file_path = "data/TinyStoriesV2-GPT4-train.txt"
+    vocab_size = 10000
     start_time = time.time()
     vocab, merges = train_bpe(file_path, vocab_size, ["<|endoftext|>"])
     end_time = time.time()
@@ -185,7 +175,7 @@ if __name__ == "__main__":
     print(f"Merges: {len(merges)}")
     longest_vocab = sorted(vocab.values(), key=len, reverse=True)[0]
     print(f"Longest Vocab has {len(longest_vocab)} bytes, which is {longest_vocab.decode('utf-8')}")
-    with open("bpe/owt_train_vocab.pkl", "wb") as f:
+    with open("bpe/tiny_stories_train_vocab.pkl", "wb") as f:
         pickle.dump(vocab, f)
-    with open("bpe/owt_train_merges.pkl", "wb") as f:
+    with open("bpe/tiny_stories_train_merges.pkl", "wb") as f:
         pickle.dump(merges, f)
