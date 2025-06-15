@@ -21,10 +21,17 @@ from cs336_basics.layers import (
     scaled_dot_product_attention,
     MultiHeadSelfAttention,
     TransformerBlock,
-    TransformerLM
+    TransformerLM,
 )
 from cs336_basics.optimizer import cross_entropy_loss, AdamW
 from cs336_basics.tokenizer import Tokenizer
+from cs336_basics.train_utils import (
+    cosine_learning_rate_schedule,
+    gradient_clipping,
+    data_loading,
+    save_checkpoint,
+    load_checkpoint,
+)
 
 
 def run_linear(
@@ -105,9 +112,7 @@ def run_swiglu(
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
     swiglu = SwiGLU(d_model, d_ff)
-    swiglu.load_state_dict(
-        {"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight}
-    )
+    swiglu.load_state_dict({"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
     return swiglu(in_features)
 
 
@@ -163,10 +168,10 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    layer =  MultiHeadSelfAttention(d_model, num_heads)
+    layer = MultiHeadSelfAttention(d_model, num_heads)
     layer.q_proj.weight.data = q_proj_weight
     layer.k_proj.weight.data = k_proj_weight
-    layer.v_proj.weight.data = v_proj_weight 
+    layer.v_proj.weight.data = v_proj_weight
     layer.output_proj.weight.data = o_proj_weight
     return layer(in_features)
 
@@ -211,7 +216,7 @@ def run_multihead_self_attention_with_rope(
     layer = MultiHeadSelfAttention(d_model, num_heads, max_seq_len, theta)
     layer.q_proj.weight.data = q_proj_weight
     layer.k_proj.weight.data = k_proj_weight
-    layer.v_proj.weight.data = v_proj_weight 
+    layer.v_proj.weight.data = v_proj_weight
     layer.output_proj.weight.data = o_proj_weight
     return layer(in_features, token_positions)
 
@@ -458,7 +463,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return data_loading(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -495,9 +500,7 @@ def run_cross_entropy(
     return cross_entropy_loss(inputs, targets)
 
 
-def run_gradient_clipping(
-    parameters: Iterable[torch.nn.Parameter], max_l2_norm: float
-) -> None:
+def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
 
     Args:
@@ -506,7 +509,7 @@ def run_gradient_clipping(
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> type[torch.optim.Optimizer]:
@@ -541,7 +544,7 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return cosine_learning_rate_schedule(it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters)
 
 
 def run_save_checkpoint(
@@ -560,7 +563,7 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    save_checkpoint(model, optimizer, iteration, out)
 
 
 def run_load_checkpoint(
@@ -581,7 +584,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return load_checkpoint(src, model, optimizer)
 
 
 def get_tokenizer(
