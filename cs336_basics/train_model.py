@@ -1,16 +1,14 @@
 from dataclasses import dataclass, field, asdict
-from typing import Optional
 from transformers import HfArgumentParser
 import torch
 import logging
-import time
 import numpy as np
 from pathlib import Path
 import wandb
+from tqdm import tqdm
 
 from cs336_basics.layers import TransformerLM
 from cs336_basics.optimizer import AdamW, cross_entropy_loss
-from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.train_utils import (
     cosine_learning_rate_schedule,
     gradient_clipping,
@@ -30,19 +28,14 @@ class TrainingConfig:
     val_data_path: str
     context_length: int = field(default=256)
     batch_size: int = field(default=32)
-    device: Optional[str] = field(default="cuda" if torch.cuda.is_available() else "cpu")
-
-    # tokenizer parameters
-    vocab_file: Optional[str] = field(default=None)
-    merges_file: Optional[str] = field(default=None)
-    use_special_tokens: bool = field(default=False)
+    device: str = field(default="cuda" if torch.cuda.is_available() else "cpu")
 
     # checkpoint parameters
     checkpoint_dir: str = field(default="checkpoints")
-    resume_from_checkpoint: Optional[str] = field(default=None)
+    resume_from_checkpoint: str = field(default=None)
 
     # model parameters (default values from GPT2 config)
-    vocab_size: int = field(default=None)
+    vocab_size: int = field(default=32000)
     d_model: int = field(default=512)
     num_layers: int = field(default=6)
     num_heads: int = field(default=8)
@@ -62,10 +55,9 @@ class TrainingConfig:
     log_interval: int = field(default=100)
     eval_interval: int = field(default=1000)
     eval_iters: int = field(default=200)
-    checkpoint_interval: int = field(default=1000)
     no_wandb: bool = field(default=False)
     wandb_project: str = field(default="cs336-basics")
-    wandb_run_name: Optional[str] = field(default=None)
+    wandb_run_name: str = field(default=None)
 
     def __post_init__(self):
         # Validate arguments
@@ -74,27 +66,33 @@ class TrainingConfig:
                 "Either vocab_size must be specified, or both vocab_file and merges_file must be provided to infer vocab_size."
             )
 
+def eval_model(model, config, val_data, device, step, checkpoint_dir, optimizer):
+    model.eval()
+    val_loss = 0.0
+    for _ in range(config.eval_iters):
+        inputs, targets = data_loading(
+            dataset=val_data,
+            batch_size=config.batch_size,
+            context_length=config.context_length,
+            device=device,
+        )
+        logits = model(inputs)
+        loss = cross_entropy_loss(logits.view(-1, config.vocab_size), targets.view(-1))
+        val_loss += loss.item()
+    val_loss /= config.eval_iters
+    logging.info(f"Validation Loss: {val_loss:.4f}")
+    if not config.no_wandb:
+        wandb.log({"val/loss": val_loss}, step=step + 1)
+    checkpoint_path = checkpoint_dir / f"checkpoint_{step + 1}.pth"
+    logging.info(f"Saving checkpoint to {checkpoint_path}")
+    save_checkpoint(model, optimizer, step + 1, checkpoint_path)
+    model.train()
+    return val_loss
 
 def train(config: TrainingConfig):
     """
     Main training loop.
     """
-    # Load tokenizer if provided (for vocab size inference)
-    if config.vocab_file and config.merges_file:
-        tokenizer = Tokenizer.from_files(
-            vocab_filepath=config.vocab_file,
-            merges_filepath=config.merges_file,
-            special_tokens=[b"<|endoftext|>"] if config.use_special_tokens else None,
-        )
-        # Use tokenizer's vocab size if not specified
-        if config.vocab_size != len(tokenizer.token_to_id):
-            logging.warning(
-                f"Specified vocab_size ({config.vocab_size}) differs from tokenizer vocab size "
-                f"({len(tokenizer.token_to_id)}). Using tokenizer vocab size."
-            )
-            config.vocab_size = len(tokenizer.token_to_id)
-        logging.info(f"Loaded tokenizer with vocab size: {config.vocab_size}")
-
     # Initialize wandb
     if not config.no_wandb:
         wandb.init(
@@ -113,8 +111,8 @@ def train(config: TrainingConfig):
 
     # Create DataLoaders
     logging.info("Loading datasets...")
-    train_data = np.memmap(config.train_data_path, dtype=np.uint16, mode="r")
-    val_data = np.memmap(config.val_data_path, dtype=np.uint16, mode="r")
+    train_data = np.load(config.train_data_path, mmap_mode="r")
+    val_data = np.load(config.val_data_path, mmap_mode="r")
     logging.info(f"Datasets loaded. Train: {len(train_data)} tokens, Val: {len(val_data)} tokens")
 
     # Model initialization
@@ -148,57 +146,14 @@ def train(config: TrainingConfig):
                 "Attempting to load latest from checkpoint directory."
             )
 
-    if not checkpoint_path:
-        # Find the latest checkpoint in the directory
-        latest_checkpoint_path = max(
-            checkpoint_dir.glob("*.pth"),
-            default=None,
-            key=lambda p: int(p.stem.split("_")[-1]),
-        )
-        if latest_checkpoint_path:
-            checkpoint_path = latest_checkpoint_path
-
     if checkpoint_path:
         logging.info(f"Resuming from checkpoint: {checkpoint_path}")
         start_step = load_checkpoint(checkpoint_path, model, optimizer)
 
-    def eval_model():
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for _ in range(config.eval_iters):
-                inputs, targets = data_loading(
-                    dataset=val_data,
-                    batch_size=config.batch_size,
-                    context_length=config.context_length,
-                    device=device,
-                )
-                logits = model(inputs)
-                loss = cross_entropy_loss(logits.view(-1, config.vocab_size), targets.view(-1))
-                val_loss += loss.item()
-        val_loss /= config.eval_iters
-        logging.info(f"Validation Loss: {val_loss:.4f}")
-        if not config.no_wandb:
-            wandb.log({"val/loss": val_loss}, step=step + 1)
-        model.train()
-        return val_loss
-
     model.train()
     running_loss = 0.0
-    curr_time = time.time()
 
-    for step in range(start_step, config.max_steps):
-        # Learning rate scheduling
-        lr = cosine_learning_rate_schedule(
-            current_step=step,
-            max_lr=config.learning_rate,
-            min_lr=config.min_learning_rate,
-            warmup_steps=config.warmup_steps,
-            total_annealing_steps=config.max_steps,
-        )
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr
-
+    for step in tqdm(range(start_step, config.max_steps)):
         # Get a batch of data
         inputs, targets = data_loading(
             dataset=train_data,
@@ -209,8 +164,7 @@ def train(config: TrainingConfig):
 
         # Forward pass
         logits = model(inputs)
-        # Reshape for loss function
-        loss = cross_entropy_loss(logits.view(-1, config.vocab_size), targets.view(-1))
+        loss = cross_entropy_loss(logits, targets)
         running_loss += loss.item()
 
         # Backward pass and optimization
@@ -220,13 +174,21 @@ def train(config: TrainingConfig):
             gradient_clipping(model.parameters(), config.grad_clip)
         optimizer.step()
 
-        finish_time = time.time()
+        lr = cosine_learning_rate_schedule(
+            current_step=step,
+            max_lr=config.learning_rate,
+            min_lr=config.min_learning_rate,
+            warmup_steps=config.warmup_steps,
+            total_annealing_steps=config.max_steps,
+        )
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
 
         # Logging
         if (step + 1) % config.log_interval == 0:
             avg_loss = running_loss / config.log_interval
             logging.info(
-                f"Step {step + 1}/{config.max_steps} | LR: {lr:.6f} | Train Loss: {avg_loss:.4f} | Time: {1000 * (finish_time - curr_time):.2f}ms"
+                f"Step {step + 1}/{config.max_steps} | LR: {lr:.6f} | Train Loss: {avg_loss:.4f}"
             )
             if not config.no_wandb:
                 wandb.log(
@@ -237,15 +199,7 @@ def train(config: TrainingConfig):
 
         # Evaluation
         if (step + 1) % config.eval_interval == 0:
-            eval_model()
-
-        # Save checkpoint
-        if (step + 1) % config.checkpoint_interval == 0:
-            checkpoint_path = checkpoint_dir / f"checkpoint_{step + 1}.pth"
-            logging.info(f"Saving checkpoint to {checkpoint_path}")
-            save_checkpoint(model, optimizer, step + 1, checkpoint_path)
-
-        curr_time = finish_time
+            eval_model(model, config, val_data, device, step, checkpoint_dir, optimizer)
 
 
 if __name__ == "__main__":
