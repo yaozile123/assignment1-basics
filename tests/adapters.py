@@ -28,10 +28,10 @@ from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.train_utils import (
     cosine_learning_rate_schedule,
     gradient_clipping,
-    data_loading,
     save_checkpoint,
     load_checkpoint,
 )
+from cs336_basics.data import data_loading
 
 
 def run_linear(

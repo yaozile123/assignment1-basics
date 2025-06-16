@@ -5,7 +5,7 @@ from typing import Iterable, Iterator
 from cs336_basics.utils import create_new_tokens
 
 class Tokenizer:
-    def __init__(self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[bytes] | None = None):
+    def __init__(self, vocab: dict[int, bytes], merges: list[tuple[bytes, bytes]], special_tokens: list[str] | None = None):
         self.id_to_token = vocab
         self.token_to_id = {token: index for index, token in vocab.items()}
         self.merges = {x: i for i, x in enumerate(merges)}
@@ -15,10 +15,11 @@ class Tokenizer:
             if encoded_token not in self.token_to_id:
                 self.id_to_token[len(self.token_to_id)] = encoded_token
                 self.token_to_id[encoded_token] = len(self.token_to_id)
+        self.eos_token_id = self.token_to_id[b"<|endoftext|>"]
 
     
     @classmethod
-    def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[bytes] | None = None):
+    def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
         with open(vocab_filepath, 'rb') as f:
             vocab = pickle.load(f)
         with open(merges_filepath, 'rb') as f:
@@ -27,7 +28,7 @@ class Tokenizer:
 
 
     def encode(self, text: str) -> list[int]:
-        ids = []
+        ids = []    
         if not self.special_tokens:
             return self.encode_part(text)
         special_pattern = "|".join(
