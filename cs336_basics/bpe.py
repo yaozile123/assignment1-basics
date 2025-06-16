@@ -1,5 +1,6 @@
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+
 from tqdm import tqdm
 
 from cs336_basics.utils import (
@@ -10,8 +11,6 @@ from cs336_basics.utils import (
     pretokenize_chunk,
     split_chunks,
 )
-
-num_of_processes: int = 100
 
 
 def initialize_vocab(special_tokens: list[str]) -> dict[int, bytes]:
@@ -120,7 +119,10 @@ def bpe_merge(
 
 
 def train_bpe(
-    input_path: str, vocab_size: int, special_tokens: list[str]
+    input_path: str,
+    vocab_size: int,
+    special_tokens: list[str],
+    num_of_processes: int = 100,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """Given the path to an input corpus, run train a BPE tokenizer and
     output its vocabulary and merges.
