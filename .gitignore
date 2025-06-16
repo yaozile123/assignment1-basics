@@ -166,3 +166,4 @@ data/
 bpe/
 .DS_Store
 *.ipynb
+wandb/

@@ -20,5 +20,5 @@ do
         --learning_rate=$lr \
         --max_steps=10000 \
         --wandb_project='cs336_basics' \
-        --wandb_run_name="tinystories_lr_${lr}" \
+        --wandb_run_name="tinystories_lr_${lr}"
 done
