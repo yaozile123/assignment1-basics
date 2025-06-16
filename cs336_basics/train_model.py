@@ -1,12 +1,14 @@
-from dataclasses import dataclass, field, asdict
-from transformers import HfArgumentParser
-import torch
 import logging
-import numpy as np
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+import numpy as np
+import torch
 import wandb
 from tqdm import tqdm
+from transformers import HfArgumentParser
 
+from cs336_basics.data import data_loading
 from cs336_basics.layers import TransformerLM
 from cs336_basics.optimizer import AdamW, cross_entropy_loss
 from cs336_basics.train_utils import (
@@ -15,9 +17,10 @@ from cs336_basics.train_utils import (
     load_checkpoint,
     save_checkpoint,
 )
-from cs336_basics.data import data_loading
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 # parsing the training configuration
@@ -44,27 +47,31 @@ class TrainingConfig:
     # training parameters
     max_steps: int = field(default=100000)
     learning_rate: float = field(default=1e-3)
-    min_learning_rate: float = field(default=1e-5)
+    min_learning_rate: float = field(default=0)
     adam_beta1: float = field(default=0.9)
     adam_beta2: float = field(default=0.95)
     weight_decay: float = field(default=0.01)
     grad_clip: float = field(default=1.0)
-    warmup_steps: int = field(default=2000)
+    warmup_steps: int = field(default=None)
+    theta: int = field(default=10000)  # for rope
 
     # logging parameters
-    log_interval: int = field(default=100)
-    eval_interval: int = field(default=1000)
-    eval_iters: int = field(default=200)
+    log_interval: int = field(default=None)
+    eval_interval: int = field(default=None)
+    eval_iters: int = field(default=100)
     no_wandb: bool = field(default=False)
     wandb_project: str = field(default="cs336-basics")
     wandb_run_name: str = field(default=None)
 
     def __post_init__(self):
         # Validate arguments
-        if not self.vocab_size and not (self.vocab_file and self.merges_file):
-            raise ValueError(
-                "Either vocab_size must be specified, or both vocab_file and merges_file must be provided to infer vocab_size."
-            )
+        if self.warmup_steps is None:
+            self.warmup_steps = int(self.max_steps * 0.01)
+        if self.log_interval is None:
+            self.log_interval = int(self.max_steps * 0.001)
+        if self.eval_interval is None:
+            self.eval_interval = int(self.max_steps * 0.01)
+
 
 def eval_model(model, config, val_data, device, step, checkpoint_dir, optimizer):
     model.eval()
@@ -88,6 +95,7 @@ def eval_model(model, config, val_data, device, step, checkpoint_dir, optimizer)
     save_checkpoint(model, optimizer, step + 1, checkpoint_path)
     model.train()
     return val_loss
+
 
 def train(config: TrainingConfig):
     """
@@ -113,7 +121,9 @@ def train(config: TrainingConfig):
     logging.info("Loading datasets...")
     train_data = np.load(config.train_data_path, mmap_mode="r")
     val_data = np.load(config.val_data_path, mmap_mode="r")
-    logging.info(f"Datasets loaded. Train: {len(train_data)} tokens, Val: {len(val_data)} tokens")
+    logging.info(
+        f"Datasets loaded. Train: {len(train_data)} tokens, Val: {len(val_data)} tokens"
+    )
 
     # Model initialization
     model = TransformerLM(
@@ -123,8 +133,11 @@ def train(config: TrainingConfig):
         num_layers=config.num_layers,
         num_heads=config.num_heads,
         d_ff=config.d_ff,
+        theta=config.theta,
     ).to(device)
-    logging.info(f"Model initialized with {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M parameters.")
+    logging.info(
+        f"Model initialized with {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M parameters."
+    )
 
     # Optimizer initialization
     optimizer = AdamW(
