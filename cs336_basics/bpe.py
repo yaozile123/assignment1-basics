@@ -160,22 +160,3 @@ def train_bpe(
     merge_times = vocab_size - len(vocab)  # Number of merges to perform
     vocab, merges = bpe_merge(pretokenize_counter, vocab, merge_times)
     return vocab, merges
-
-
-if __name__ == "__main__":
-    import time
-    import pickle
-    file_path = "data/TinyStoriesV2-GPT4-train.txt"
-    vocab_size = 10000
-    start_time = time.time()
-    vocab, merges = train_bpe(file_path, vocab_size, ["<|endoftext|>"])
-    end_time = time.time()
-    print(f"Time taken: {end_time - start_time} seconds")
-    print(f"Vocab size: {len(vocab)}")
-    print(f"Merges: {len(merges)}")
-    longest_vocab = sorted(vocab.values(), key=len, reverse=True)[0]
-    print(f"Longest Vocab has {len(longest_vocab)} bytes, which is {longest_vocab.decode('utf-8')}")
-    with open("bpe/tiny_stories_train_vocab.pkl", "wb") as f:
-        pickle.dump(vocab, f)
-    with open("bpe/tiny_stories_train_merges.pkl", "wb") as f:
-        pickle.dump(merges, f)
