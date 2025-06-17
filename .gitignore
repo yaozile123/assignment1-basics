@@ -167,3 +167,4 @@ bpe/
 .DS_Store
 *.ipynb
 wandb/
+checkpoints/

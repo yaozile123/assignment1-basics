@@ -3,9 +3,9 @@ from cs336_basics.preprocess_data import preprocess_text_data
 
 owt_data = {
     'train':'data/owt_train.txt',
-    'val':'data/owt_val.txt',
-    'vocab_filepath': 'data/out/owt_vocab.json',
-    'merges_filepath': 'data/out/owt_merges.txt',
+    'val':'data/owt_valid.txt',
+    'vocab_filepath': 'data/out/owt_train_vocab.pkl',
+    'merges_filepath': 'data/out/owt_train_merges.pkl',
     'special_tokens': ['<|endoftext|>']
 }
 

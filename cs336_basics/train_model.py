@@ -58,7 +58,7 @@ class TrainingConfig:
     # logging parameters
     log_interval: int = field(default=None)
     eval_interval: int = field(default=None)
-    eval_iters: int = field(default=100)
+    eval_iters: int = field(default=None)
     no_wandb: bool = field(default=False)
     wandb_project: str = field(default="cs336-basics")
     wandb_run_name: str = field(default=None)
@@ -68,9 +68,11 @@ class TrainingConfig:
         if self.warmup_steps is None:
             self.warmup_steps = int(self.max_steps * 0.01)
         if self.log_interval is None:
-            self.log_interval = int(self.max_steps * 0.001)
+            self.log_interval = int(self.max_steps * 0.01)
         if self.eval_interval is None:
-            self.eval_interval = int(self.max_steps * 0.01)
+            self.eval_interval = int(self.max_steps * 0.1)
+        if self.eval_iters is None:
+            self.eval_iters = 50  # Set a reasonable default value
 
 
 def eval_model(model, config, val_data, device, step, checkpoint_dir, optimizer):
@@ -135,6 +137,8 @@ def train(config: TrainingConfig):
         d_ff=config.d_ff,
         theta=config.theta,
     ).to(device)
+    if device == "mps":
+        model = torch.compile(model, backend="aot_eager")
     logging.info(
         f"Model initialized with {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M parameters."
     )
@@ -177,7 +181,7 @@ def train(config: TrainingConfig):
 
         # Forward pass
         logits = model(inputs)
-        loss = cross_entropy_loss(logits, targets)
+        loss = cross_entropy_loss(logits.view(-1, config.vocab_size), targets.view(-1))
         running_loss += loss.item()
 
         # Backward pass and optimization

@@ -128,10 +128,15 @@ class RotaryPositionalEmbedding(nn.Module):
         self.register_buffer("cos", cos, persistent=False)  # (max_seq, dim / 2)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor):
-        # x (batch_size, seq_len, d_k)
+        # x (batch_size, num_heads, seq_len, d_k)
         # token_position (batch_size, seq_len)
+        if token_positions.dim() == 1:
+            token_positions = token_positions.unsqueeze(0)
         sin, cos = self.sin[token_positions], self.cos[token_positions] # (batch_size, seq_len, dim / 2)
-        x_even, x_odd = x[..., 0::2], x[..., 1::2] # (batch_size, seq_len, dim / 2)
+        if x.dim() == 4:
+            sin = sin.unsqueeze(1)
+            cos = cos.unsqueeze(1)
+        x_even, x_odd = x[..., 0::2], x[..., 1::2] # (batch_size, num_heads, seq_len, dim / 2)
         out_even = x_even * cos - x_odd * sin
         out_odd  = x_even * sin + x_odd * cos
         # we want to build like (x1, x2, x3, x4) so we need to stack and flatten
