@@ -92,7 +92,7 @@ def eval_model(model, config, val_data, device, step, checkpoint_dir, optimizer)
     logging.info(f"Validation Loss: {val_loss:.4f}")
     if not config.no_wandb:
         wandb.log({"val/loss": val_loss}, step=step + 1)
-    checkpoint_path = checkpoint_dir / f"checkpoint_{step + 1}.pth"
+    checkpoint_path = checkpoint_dir / f"checkpoint_{step + 1}_lr_{config.learning_rate}.pth"
     logging.info(f"Saving checkpoint to {checkpoint_path}")
     save_checkpoint(model, optimizer, step + 1, checkpoint_path)
     model.train()

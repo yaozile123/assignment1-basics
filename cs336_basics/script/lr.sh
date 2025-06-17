@@ -11,14 +11,15 @@ do
         --train_data_path='data/out/tinystories_train_tokenized.npy' \
         --val_data_path='data/out/tinystories_val_tokenized.npy' \
         --context_length=256 \
-        --batch_size=128 \
+        --batch_size=32 \
+        --device=mps \
         --vocab_size=10000 \
         --d_model=512 \
         --d_ff=1344 \
         --num_layers=4 \
         --num_heads=16 \
         --learning_rate=$lr \
-        --max_steps=10000 \
+        --max_steps=5000 \
         --wandb_project='cs336_basics' \
         --wandb_run_name="tinystories_lr_${lr}"
 done
